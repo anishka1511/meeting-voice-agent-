@@ -3,12 +3,15 @@ import json
 import asyncio
 import sounddevice as sd
 import websockets
+import numpy as np
 from groq import Groq
+from elevenlabs import ElevenLabs
 from dotenv import load_dotenv
 
 load_dotenv()
 DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 
 # Audio configuration
 SAMPLE_RATE = 16000
@@ -29,8 +32,9 @@ DEEPGRAM_URL = (
     "&smart_format=true"
 )
 
-# Initialize Groq client
+# Initialize clients
 groq_client = Groq(api_key=GROQ_API_KEY)
+elevenlabs_client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
 
 def mic_stream():
     """Stream audio from microphone."""
@@ -71,6 +75,29 @@ def get_llm_response(transcript):
     except Exception as e:
         return f"Error: {str(e)}"
 
+def text_to_speech(text):
+    """Convert text to speech using ElevenLabs and play it."""
+    try:
+        # Generate speech
+        audio_generator = elevenlabs_client.text_to_speech.convert(
+            voice_id="21m00Tcm4TlvDq8ikWAM",  # Rachel voice (default, good quality)
+            text=text,
+            model_id="eleven_turbo_v2_5"  # Fastest model for low latency
+        )
+        
+        # Collect audio chunks
+        audio_data = b"".join(audio_generator)
+        
+        # Convert to numpy array for playback
+        audio_np = np.frombuffer(audio_data, dtype=np.int16)
+        
+        # Play audio
+        sd.play(audio_np, samplerate=22050)  # ElevenLabs default sample rate
+        sd.wait()  # Wait until audio finishes playing
+        
+    except Exception as e:
+        print(f"TTS Error: {str(e)}")
+
 async def receive_transcripts(ws):
     """Receive transcripts from Deepgram and send final ones to LLM."""
     async for message in ws:
@@ -97,17 +124,21 @@ async def receive_transcripts(ws):
             # Get LLM response
             print("[AGENT] Thinking...")
             llm_response = await asyncio.to_thread(get_llm_response, transcript)
-            print(f"[AGENT] {llm_response}\n")
+            print(f"[AGENT] {llm_response}")
+            
+            # Convert to speech and play
+            print("[AGENT] Speaking...")
+            await asyncio.to_thread(text_to_speech, llm_response)
+            print()
 
 async def main():
-    """Main function to run STT + LLM pipeline."""
+    """Main function to run STT + LLM + TTS pipeline."""
     headers = {
         "Authorization": f"Token {DEEPGRAM_API_KEY}"
     }
 
     async with websockets.connect(DEEPGRAM_URL, additional_headers=headers) as ws:
-        print("🎤 Voice Agent Ready - Speak now (Ctrl+C to stop)")
-        print("=" * 60)
+        print("🎤 Speak now (Ctrl+C to stop)")
 
         send_task = asyncio.create_task(send_audio(ws))
         recv_task = asyncio.create_task(receive_transcripts(ws))
