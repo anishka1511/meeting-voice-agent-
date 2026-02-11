@@ -1,8 +1,13 @@
+import os
+import json
+import asyncio
 import sounddevice as sd
+import websockets
 import numpy as np
-import queue
-import time
-from openai import OpenAI
+from groq import Groq
+from gtts import gTTS
+import io
+from pydub import AudioSegment
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -13,14 +18,31 @@ CABLE_OUTPUT_INDEX = 17  # CABLE Output (VB-Audio Virtual Cable) - for listening
 CABLE_INPUT_INDEX = 16   # CABLE Input (VB-Audio Virtual Cable) - for speaking (48kHz stereo)
 # =========================================================================
 
-client = OpenAI()  # Make sure OPENAI_API_KEY is set in environment
+DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-# Audio parameters
+# Audio configuration
 SAMPLE_RATE = 48000  # Match VB-Cable sample rate
-CHANNELS = 2         # Stereo for VB-Cable
-BLOCKSIZE = 24000    # 0.5 seconds of audio at 48kHz
+INPUT_CHANNELS = 1   # Mono for input
+OUTPUT_CHANNELS = 2  # Stereo for output
+CHUNK_DURATION = 0.05  # 50 ms
+CHUNK_SIZE = int(SAMPLE_RATE * CHUNK_DURATION)
 
-audio_queue = queue.Queue()
+# Deepgram WebSocket URL - OPTIMIZED FOR SPEED
+DEEPGRAM_URL = (
+    "wss://api.deepgram.com/v1/listen"
+    "?model=nova-2"
+    "&language=en-US"
+    "&encoding=linear16"
+    f"&sample_rate={SAMPLE_RATE}"
+    "&channels=1"
+    "&interim_results=true"
+    "&endpointing=100"
+    "&smart_format=true"
+)
+
+# Initialize Groq client
+groq_client = Groq(api_key=GROQ_API_KEY)
 
 def audio_callback(indata, frames, time_info, status):
     """Callback for audio input stream"""
@@ -30,11 +52,8 @@ def audio_callback(indata, frames, time_info, status):
 
 def speech_to_text(audio_data):
     """Convert audio to text using Whisper"""
-    try:
-        # Convert stereo to mono by averaging channels
-        if audio_data.ndim == 2:
-            audio_mono = np.mean(audio_data, axis=1)
-        else:
+    try:Audio is already mono from input stream
+        audio_mono = audio_data.flatten()
             audio_mono = audio_data
         
         # Convert numpy array to bytes
@@ -121,7 +140,7 @@ def main():
             channels=CHANNELS,
             samplerate=SAMPLE_RATE,
             blocksize=BLOCKSIZE,
-            callback=audio_callback
+            callback=INPUT_audio_callback
         ):
             print("✅ Agent is now listening to the meeting...\n")
             
