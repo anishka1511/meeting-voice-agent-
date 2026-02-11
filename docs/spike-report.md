@@ -293,3 +293,138 @@ This makes Groq ideal for validating conversational feasibility without cost or 
 **Alternative Considered:**
 
 Google Gemini 1.5 Flash was a close second choice, offering a free tier with competitive latency. However, Groq's extreme speed advantage and purpose-built inference infrastructure made it the optimal choice for a latency-sensitive voice application.
+
+## Text-to-Speech (TTS) Integration
+
+Following successful STT and LLM integration, the next critical component was adding text-to-speech to enable the agent to respond vocally, completing the full conversational loop.
+
+### TTS Provider Evaluation
+
+Multiple TTS providers were evaluated based on the following criteria:
+
+**Evaluation Criteria:**
+- **Voice quality**: Natural-sounding, human-like voices
+- **Latency**: Fast generation for real-time conversation
+- **Cost**: Free tier availability for prototyping
+- **Reliability**: Stable connections without frequent timeouts
+- **Integration complexity**: Ease of implementation in Python
+
+**Provider Comparison:**
+
+| Provider | Free Tier | Voice Quality | Latency | Reliability | Notes |
+|----------|-----------|---------------|---------|-------------|-------|
+| **ElevenLabs** | ❌ Limited (10k chars/month) | ⭐⭐⭐⭐⭐ Excellent | Fast | ⚠️ Issues | Abuse detection blocked free tier |
+| **Edge TTS** | ✅ Unlimited | ⭐⭐⭐⭐ Very Good | Fast | ❌ Unstable | WebSocket timeouts after multiple requests |
+| **gTTS (Google)** | ✅ Unlimited | ⭐⭐⭐ Good | Moderate | ✅ Stable | Simple REST API, very reliable |
+| **OpenAI TTS** | ❌ Paid (~$15/1M chars) | ⭐⭐⭐⭐ Very Good | Fast | ✅ Stable | Not suitable for free prototyping |
+
+### TTS Implementation Journey
+
+**Attempt 1: ElevenLabs**
+
+ElevenLabs was initially selected for its industry-leading voice quality and natural-sounding speech synthesis. However, during testing, the free tier was blocked due to "unusual activity detection":
+
+```
+status_code: 401
+message: 'Unusual activity detected. Free Tier usage disabled.'
+```
+
+**Issues encountered:**
+- Free tier flagged due to VPN/proxy usage or multiple test requests
+- Required paid subscription to continue
+- Not viable for cost-free prototyping
+
+**Verdict:** Abandoned due to free tier restrictions.
+
+---
+
+**Attempt 2: Edge TTS (Microsoft)**
+
+Edge TTS was selected as the second option, offering unlimited free usage with high-quality Microsoft Azure Neural voices (e.g., "en-US-AriaNeural").
+
+**Initial implementation:**
+- Used WebSocket streaming API
+- Good voice quality
+- Fast generation
+
+**Issues encountered:**
+- WebSocket connection timeouts after 3-5 requests:
+  ```
+  Connection timeout to host wss://speech.platform.bing.com/...
+  ```
+- Rate limiting on Microsoft's free service
+- Unreliable for sustained conversational testing
+- Required retry logic that added complexity
+
+**Verdict:** Abandoned due to connection stability issues.
+
+---
+
+**Attempt 3: gTTS (Google Text-to-Speech) ✅ Final Choice**
+
+gTTS was selected as the final TTS provider after stability issues with ElevenLabs and Edge TTS.
+
+**Decision rationale:**
+
+1. **Reliability**: Simple REST API with no WebSocket timeouts
+2. **Unlimited free usage**: No rate limits or abuse detection
+3. **Sufficient quality**: Voice quality is acceptable for prototyping (not premium, but clear and understandable)
+4. **Simplicity**: Easy integration with minimal code
+5. **Proven stability**: Handles multiple consecutive requests without connection issues
+
+**Implementation approach:**
+- Generate MP3 audio using gTTS
+- Convert to WAV format using pydub
+- Play audio using sounddevice in non-blocking mode
+- Agent continues listening while speaking (enables natural conversation flow)
+
+### TTS Integration Architecture
+
+```
+LLM Response (text)
+   ↓
+gTTS Generation (REST API)
+   ↓
+MP3 Audio Data
+   ↓
+pydub Conversion (MP3 → WAV)
+   ↓
+NumPy Audio Array
+   ↓
+sounddevice Playback (non-blocking)
+   ↓
+Audio Output (speakers)
+```
+
+### Trade-offs and Limitations
+
+**Voice Quality:**
+- gTTS voice quality is good but not premium (compared to ElevenLabs or OpenAI TTS)
+- Acceptable for research spike and feasibility validation
+- Production system may require upgrading to paid TTS service
+
+**Latency:**
+- gTTS generation is moderately fast (~1-2 seconds for short responses)
+- Slower than streaming TTS options but acceptable for conversational use
+- Non-blocking playback ensures agent remains responsive
+
+**Reliability vs. Quality Trade-off:**
+- Prioritized reliability and zero-cost over premium voice quality
+- This decision aligns with spike objectives: validate feasibility, not production polish
+
+### Lessons Learned
+
+1. **Free tier limitations are real**: Premium providers (ElevenLabs) aggressively enforce usage limits
+2. **WebSocket stability matters**: Edge TTS's timeout issues made it unsuitable for sustained testing
+3. **Simplicity wins for prototyping**: gTTS's REST API proved more reliable than WebSocket-based solutions
+4. **Non-blocking audio is critical**: Playing TTS audio without blocking the event loop prevents WebSocket timeouts and maintains conversational flow
+
+### Final TTS Configuration
+
+- **Provider**: gTTS (Google Text-to-Speech)
+- **Language**: English (US)
+- **Output format**: MP3 (converted to WAV for playback)
+- **Playback mode**: Non-blocking (agent listens while speaking)
+- **Cost**: $0 (unlimited free usage)
+
+This configuration successfully enables full voice conversation: microphone → STT → LLM → TTS → speakers.

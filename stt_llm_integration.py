@@ -5,13 +5,14 @@ import sounddevice as sd
 import websockets
 import numpy as np
 from groq import Groq
-from elevenlabs import ElevenLabs
+from gtts import gTTS
+import io
+from pydub import AudioSegment
 from dotenv import load_dotenv
 
 load_dotenv()
 DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 
 # Audio configuration
 SAMPLE_RATE = 16000
@@ -19,7 +20,7 @@ CHANNELS = 1
 CHUNK_DURATION = 0.05  # 50 ms
 CHUNK_SIZE = int(SAMPLE_RATE * CHUNK_DURATION)
 
-# Deepgram WebSocket URL
+# Deepgram WebSocket URL - OPTIMIZED FOR SPEED
 DEEPGRAM_URL = (
     "wss://api.deepgram.com/v1/listen"
     "?model=nova-2"
@@ -28,13 +29,12 @@ DEEPGRAM_URL = (
     "&sample_rate=16000"
     "&channels=1"
     "&interim_results=true"
-    "&endpointing=300"
+    "&endpointing=100"
     "&smart_format=true"
 )
 
-# Initialize clients
+# Initialize Groq client
 groq_client = Groq(api_key=GROQ_API_KEY)
-elevenlabs_client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
 
 def mic_stream():
     """Stream audio from microphone."""
@@ -69,31 +69,37 @@ def get_llm_response(transcript):
                 }
             ],
             temperature=0.7,
-            max_tokens=150
+            max_tokens=100
         )
         return response.choices[0].message.content
     except Exception as e:
         return f"Error: {str(e)}"
 
 def text_to_speech(text):
-    """Convert text to speech using ElevenLabs and play it."""
+    """Convert text to speech using gTTS and play it."""
     try:
-        # Generate speech
-        audio_generator = elevenlabs_client.text_to_speech.convert(
-            voice_id="21m00Tcm4TlvDq8ikWAM",  # Rachel voice (default, good quality)
-            text=text,
-            model_id="eleven_turbo_v2_5"  # Fastest model for low latency
-        )
+        # Generate speech using Google TTS
+        tts = gTTS(text=text, lang='en', slow=False)
         
-        # Collect audio chunks
-        audio_data = b"".join(audio_generator)
+        # Save to in-memory buffer
+        audio_buffer = io.BytesIO()
+        tts.write_to_fp(audio_buffer)
+        audio_buffer.seek(0)
         
-        # Convert to numpy array for playback
-        audio_np = np.frombuffer(audio_data, dtype=np.int16)
+        # Convert MP3 to WAV for playback
+        audio = AudioSegment.from_mp3(audio_buffer)
+        samples = np.array(audio.get_array_of_samples())
         
-        # Play audio
-        sd.play(audio_np, samplerate=22050)  # ElevenLabs default sample rate
-        sd.wait()  # Wait until audio finishes playing
+        # Convert to int16 if needed
+        if audio.sample_width == 2:
+            samples = samples.astype(np.int16)
+        
+        # Reshape for stereo if needed
+        if audio.channels == 2:
+            samples = samples.reshape((-1, 2))
+        
+        # Play audio WITHOUT blocking
+        sd.play(samples, samplerate=audio.frame_rate)
         
     except Exception as e:
         print(f"TTS Error: {str(e)}")
@@ -126,7 +132,7 @@ async def receive_transcripts(ws):
             llm_response = await asyncio.to_thread(get_llm_response, transcript)
             print(f"[AGENT] {llm_response}")
             
-            # Convert to speech and play
+            # Convert to speech and play (non-blocking)
             print("[AGENT] Speaking...")
             await asyncio.to_thread(text_to_speech, llm_response)
             print()
