@@ -1,12 +1,8 @@
 # Meeting Voice Agent (MVA) — Research Spike
 
-This research spike explores the feasibility of building a Meeting Voice Agent (MVA) that can join online meetings via audio, participate in real-time voice conversations with humans, and persist post-call artifacts such as transcripts and audio recordings.
+This research spike explores the feasibility of building a Meeting Voice Agent (MVA) that can join online meetings via audio, participate in real-time voice conversations, and persist post-call artifacts such as transcripts and audio recordings.
 
-The goal of this spike is not production readiness, but to validate:
-- real-time conversational feasibility,
-- viable meeting entry methods,
-- system architecture,
-- and cost implications.
+The goal is to validate real-time conversational feasibility, viable meeting entry methods, system architecture, and cost implications.
 
 ## Scope
 
@@ -17,7 +13,7 @@ The goal of this spike is not production readiness, but to validate:
 - Turn-taking and interruption handling
 - Transcript and audio capture
 
-## Non-Goals (for this spike)
+## Non-Goals
 
 - Full WebRTC bot participation
 - Video handling
@@ -31,31 +27,17 @@ The goal of this spike is not production readiness, but to validate:
 - Language: Python 3.11
 - Environment: Python virtual environment (venv)
 
-Key libraries:
-- sounddevice (audio I/O)
-- numpy (audio buffers)
-- streaming STT provider
-- TTS provider
-- LLM API
+Key libraries: sounddevice, numpy, websockets, groq, gtts, pydub
 
 ## Audio I/O Validation
 
-The first validation step was to confirm reliable microphone input and speaker output on the development environment.
-
-A local audio loopback test was implemented:
+A local audio loopback test was implemented to confirm reliable microphone input and speaker output:
 - Record microphone input for a fixed duration
 - Immediately play the recorded audio back
 
-Result:
-- Microphone access confirmed
-- Speaker output confirmed
-- Audio latency acceptable for conversational use
+Results confirmed microphone access, speaker output, and acceptable audio latency for conversational use. This validates the system can support real-time audio pipelines.
 
-This validates that the system can support real-time audio pipelines.
-
-## Real-Time Speech-to-Text (STT)
-
-This phase evaluates the feasibility of low-latency, streaming speech recognition for a real-time conversational voice agent.
+## Speech-to-Text Implementation
 
 ### STT Provider Selection
 
@@ -242,66 +224,28 @@ Following successful real-time speech-to-text transcription, the next phase focu
 The goal of this phase was to validate that:
 - finalized speech transcripts can be passed to an LLM,
 - the LLM can generate coherent, context-aware responses,
-- the response latency is acceptable for conversational use.
+- the response latency iIntegration
 
-This phase does not yet include speech synthesis or interruption handling.
+The LLM component generates conversational responses based on transcribed speech. Key requirements were low latency, zero cost for prototyping, and sufficient quality for dialogue.
 
-### LLM Provider Selection
-
-Multiple LLM providers were evaluated based on the following criteria:
-
-**Evaluation Criteria:**
-- **Latency**: Response time directly impacts conversational naturalness
-- **Cost**: Free tier availability for development and testing
-- **Request limits**: Sufficient quota for iterative prototyping
-- **Quality**: Coherent, context-aware responses
-
-**Provider Comparison:**
+### Provider Evaluation
 
 | Provider | Free Tier | Latency | Rate Limits | Notes |
 |----------|-----------|---------|-------------|-------|
-| **Groq** | ✅ Generous | ⚡ Extremely fast (~100-500ms TTFT) | ~30 req/min, ~14.4k req/day | Llama 3, Mixtral models |
-| **Google Gemini** | ✅ Available | ⚡ Fast | Generous free tier | Gemini 1.5 Flash |
-| **OpenAI** | ❌ Paid only | Fast | Pay-per-token | Requires $5+ credit |
-| **Anthropic Claude** | ❌ Paid only | Fast | Pay-per-token | Similar pricing to OpenAI |
+| Groq | Generous | Very fast (~100-500ms) | 30 req/min, 14.4k req/day | Llama 3, Mixtral models |
+| Google Gemini | Available | Fast | Generous | Gemini 1.5 Flash |
+| OpenAI | Paid only | Fast | Pay-per-token | Requires credit |
+| Anthropic | Paid only | Fast | Pay-per-token | Similar to OpenAI |
 
-**Decision: Groq (Llama 3)**
+### Decision: Groq (Llama 3.1)
 
-Groq was selected as the LLM provider for this research spike for the following reasons:
+Groq was selected for:
+1. Latency-optimized infrastructure with Time-to-First-Token under 500ms
+2. Zero-cost prototyping (14,400 requests/day free tier)
+3. Proven conversational performance with Llama 3 models
+4. No financial barrier or credit card requirement
 
-1. **Latency-optimized infrastructure**: Groq's custom LPU (Language Processing Unit) architecture delivers industry-leading inference speeds with Time-to-First-Token (TTFT) typically under 500ms, critical for real-time voice interaction.
-
-2. **Zero-cost prototyping**: The free tier provides ~14,400 requests/day and ~30 requests/minute, which is effectively unlimited for single-developer research and well beyond the throughput requirements of a conversational voice agent prototype.
-
-3. **Conversational suitability**: Groq hosts Meta's Llama 3 models, which are proven for dialogue applications and produce coherent, concise responses suitable for voice interaction.
-
-4. **No financial barrier**: Unlike OpenAI and Anthropic, Groq does not require upfront payment or credit card registration, enabling immediate iteration without budget approval.
-
-**Capacity Analysis:**
-
-For a typical voice conversation:
-- **~20 turns** (back-and-forth exchanges)
-- **~500-1000 tokens per turn** (transcript + context + response)
-- **Total: ~10,000-20,000 tokens per conversation**
-
-With Groq's free tier limits:
-- **Hundreds of full conversations per day** are feasible
-- **30 requests/minute** exceeds real-time conversational demand (humans speak slower than 30 turns/min)
-
-This makes Groq ideal for validating conversational feasibility without cost or quota concerns.
-
-**Alternative Considered:**
-
-Google Gemini 1.5 Flash was a close second choice, offering a free tier with competitive latency. However, Groq's extreme speed advantage and purpose-built inference infrastructure made it the optimal choice for a latency-sensitive voice application.
-
-## Text-to-Speech (TTS) Integration
-
-Following successful STT and LLM integration, the next critical component was adding text-to-speech to enable the agent to respond vocally, completing the full conversational loop.
-
-### TTS Provider Evaluation
-
-Multiple TTS providers were evaluated based on the following criteria:
-
+**Capacity analysis:** A typical 20-turn conversation uses 10,000-20,000 tokens. Groq's free tier supports hundreds of full conversations daily, far exceeding prototype requirements
 **Evaluation Criteria:**
 - **Voice quality**: Natural-sounding, human-like voices
 - **Latency**: Fast generation for real-time conversation
@@ -332,99 +276,100 @@ message: 'Unusual activity detected. Free Tier usage disabled.'
 **Issues encountered:**
 - Free tier flagged due to VPN/proxy usage or multiple test requests
 - Required paid subscription to continue
-- Not viable for cost-free prototyping
+- Not viable for cIntegration
 
-**Verdict:** Abandoned due to free tier restrictions.
+Three TTS providers were evaluated for voice quality, latency, cost, and reliability.
 
----
+### Provider Comparison
 
-**Attempt 2: Edge TTS (Microsoft)**
+| Provider | Free Tier | Voice Quality | Latency | Reliability | Notes |
+|----------|-----------|---------------|---------|-------------|-------|
+| ElevenLabs | Limited (10k chars/month) | Excellent | Fast | Issues | Free tier blocked |
+| Edge TTS | Unlimited | Very Good | Fast | Unstable | WebSocket timeouts |
+| gTTS (Google) | Unlimited | Good | Moderate | Stable | REST API, reliable |
+| OpenAI TTS | Paid (~$15/1M chars) | Very Good | Fast | Stable | Not free |
 
-Edge TTS was selected as the second option, offering unlimited free usage with high-quality Microsoft Azure Neural voices (e.g., "en-US-AriaNeural").
+### Implementation Journey
 
-**Initial implementation:**
-- Used WebSocket streaming API
-- Good voice quality
-- Fast generation
+**ElevenLabs:** Initially selected for voice quality but free tier was blocked due to abuse detection after testing.
 
-**Issues encountered:**
-- WebSocket connection timeouts after 3-5 requests:
-  ```
-  Connection timeout to host wss://speech.platform.bing.com/...
-  ```
-- Rate limiting on Microsoft's free service
-- Unreliable for sustained conversational testing
-- Required retry logic that added complexity
+**Edge TTS:** Attempted next for unlimited free usage with Azure Neural voices, but encountered persistent WebSocket timeout issues after 3-5 requests.
 
-**Verdict:** Abandoned due to connection stability issues.
+**gTTS (Final Choice):** Selected for reliability despite moderate voice quality. Simple REST API with no connection issues, unlimited free usage, and proven stability for consecutive requests.
 
----
-
-**Attempt 3: gTTS (Google Text-to-Speech) ✅ Final Choice**
-
-gTTS was selected as the final TTS provider after stability issues with ElevenLabs and Edge TTS.
-
-**Decision rationale:**
-
-1. **Reliability**: Simple REST API with no WebSocket timeouts
-2. **Unlimited free usage**: No rate limits or abuse detection
-3. **Sufficient quality**: Voice quality is acceptable for prototyping (not premium, but clear and understandable)
-4. **Simplicity**: Easy integration with minimal code
-5. **Proven stability**: Handles multiple consecutive requests without connection issues
-
-**Implementation approach:**
-- Generate MP3 audio using gTTS
-- Convert to WAV format using pydub
-- Play audio using sounddevice in non-blocking mode
-- Agent continues listening while speaking (enables natural conversation flow)
-
-### TTS Integration Architecture
+### Implementation
 
 ```
-LLM Response (text)
-   ↓
-gTTS Generation (REST API)
-   ↓
-MP3 Audio Data
-   ↓
-pydub Conversion (MP3 → WAV)
-   ↓
-NumPy Audio Array
-   ↓
-sounddevice Playback (non-blocking)
-   ↓
-Audio Output (speakers)
+LLM Response → gTTS Generation → MP3 Audio → pydub Conversion → 
+NumPy Array → sounddevice Playback → Audio Output
 ```
 
-### Trade-offs and Limitations
+**Configuration:**
+- Provider: gTTS (Google Text-to-Speech)
+- Language: English (US)
+- Format: MP3 converted to WAV
+- Playback: Non-blocking (agent continues listening)
 
-**Voice Quality:**
-- gTTS voice quality is good but not premium (compared to ElevenLabs or OpenAI TTS)
-- Acceptable for research spike and feasibility validation
-- Production system may require upgrading to paid TTS service
+### Trade-offs
 
-**Latency:**
-- gTTS generation is moderately fast (~1-2 seconds for short responses)
-- Slower than streaming TTS options but acceptable for conversational use
-- Non-blocking playback ensures agent remains responsive
+- Voice quality acceptable but not premium
+- Generation latency 1-2 seconds for short responses
+- Prioritized reliability and zero cost over premium quality
+- Non-blocking playback maintains conversational flow
 
-**Reliability vs. Quality Trade-off:**
-- Prioritized reliability and zero-cost over premium voice quality
-- This decision aligns with spike objectives: validate feasibility, not production polish
+## Conclusion
 
-### Lessons Learned
+This research spike successfully validates the feasibility of building a real-time conversational voice agent using managed services and zero-cost tooling.
 
-1. **Free tier limitations are real**: Premium providers (ElevenLabs) aggressively enforce usage limits
-2. **WebSocket stability matters**: Edge TTS's timeout issues made it unsuitable for sustained testing
-3. **Simplicity wins for prototyping**: gTTS's REST API proved more reliable than WebSocket-based solutions
-4. **Non-blocking audio is critical**: Playing TTS audio without blocking the event loop prevents WebSocket timeouts and maintains conversational flow
+### Key Achievements
 
-### Final TTS Configuration
+- Real-time speech-to-text with acceptable latency (approximately 1 second for partial transcripts)
+- Fast LLM response generation (100-500ms using Groq)
+- Reliable text-to-speech synthesis (gTTS)
+- Complete audio pipeline: listen → transcribe → reason → respond → speak
+- Non-blocking architecture enabling natural conversation flow
 
-- **Provider**: gTTS (Google Text-to-Speech)
-- **Language**: English (US)
-- **Output format**: MP3 (converted to WAV for playback)
-- **Playback mode**: Non-blocking (agent listens while speaking)
-- **Cost**: $0 (unlimited free usage)
+### Technical Stack
 
-This configuration successfully enables full voice conversation: microphone → STT → LLM → TTS → speakers.
+- STT: Deepgram Nova-2 (WebSocket streaming)
+- LLM: Groq Llama 3.1 8B Instant
+- TTS: Google Text-to-Speech (gTTS)
+- Audio: sounddevice, numpy, pydub, websockets
+
+### Performance Summary
+
+- Transcription latency: approximately 1 second
+- LLM inference: 100-500ms
+- TTS generation: 1-2 seconds
+- Total response time: 2-4 seconds (acceptable for conversation)
+
+### Cost Analysis
+
+All components utilize free tiers:
+- Deepgram: $200 initial credit
+- Groq: 14,400 requests/day, 30 requests/minute
+- gTTS: Unlimited
+- Total development cost: $0
+
+### Limitations
+
+- Moderate TTS voice quality (acceptable for prototyping only)
+- No speaker diarization
+- Single language support (English)
+- No conversation history tracking
+- No meeting platform integration
+
+### Future Enhancements
+
+Potential next steps outside current scope:
+- Virtual audio cable integration for meeting participation
+- Wake word activation ("Hey assistant")
+- Multi-speaker diarization
+- Conversation memory and context retention
+- Improved TTS quality (upgrade to paid service)
+- Cross-platform support (macOS, Linux)
+- Multi-language support
+
+This spike confirms that a functional conversational voice agent can be built rapidly and cost-effectively using current managed AI services. The total implementation time was approximately 2-3 days with zero infrastructure or API costs during development.
+
+This completes the full conversational pipeline
